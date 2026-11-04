@@ -973,7 +973,7 @@ configure and run it.
 ```
 Scheduled job (every 15 min)
    └─ RESTMessageV2('Toronto Events', 'getSince')
-        ├─ GET https://findtorontoevents.ca/api/events.php?since=2026-11-04T20:00:00Z
+        ├─ GET https://findtorontoevents.ca/api/events.php?since=2026-11-04%2020:00:00
         └─ header  X-API-Token: ****            ← secret lives on the REST Message, not in code
              │
              ▼
@@ -983,11 +983,18 @@ Scheduled job (every 15 min)
    loop → GlideRecord upsert keyed on event_id (coalesce) → u_torontoeventsfinal
 ```
 
-A minimal endpoint — this is the whole "PHP wrapper" idea, ~25 lines:
+**A minimal endpoint — and a copy you can run in two minutes**
+
+Two small files. `events.php` is the endpoint ServiceNow calls; `seed.php` puts three fake events in a
+local database so the endpoint has something to answer with. Neither needs MySQL, the live site, or any
+credentials:
 
 ```php
 <?php
-// api/events.php — a REST endpoint the ServiceNow instance calls.
+// api/events.php — the REST endpoint ServiceNow calls.
+// Locally this reads a throwaway SQLite file; on the live site the
+// difference is one environment variable (the DSN), nothing else.
+declare(strict_types=1);
 header('Content-Type: application/json');
 
 $token = getenv('EVENTS_API_TOKEN') ?: '';
@@ -1001,9 +1008,12 @@ if ($token !== '' && !hash_equals($token, $sent)) {
 $since = $_GET['since'] ?? '1970-01-01 00:00:00';
 
 try {
-    $pdo = new PDO('mysql:host=localhost;dbname=events;charset=utf8mb4', 'user', 'pass', [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    ]);
+    $pdo = new PDO(
+        getenv('EVENTS_DB_DSN') ?: 'sqlite:' . __DIR__ . '/events.db',
+        getenv('EVENTS_DB_USER') ?: null,
+        getenv('EVENTS_DB_PASS') ?: null,
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+    );
     $stmt = $pdo->prepare(
         'SELECT event_id, title, start_dt, venue, url
            FROM events
@@ -1026,10 +1036,70 @@ try {
     echo json_encode(['count' => count($out), 'events' => $out]);
 } catch (Throwable $e) {
     http_response_code(500);
-    error_log('events.php: ' . $e->getMessage());       // details in the server log, not to the caller
+    error_log('events.php: ' . $e->getMessage());   // details in the log, not to the caller
     echo json_encode(['error' => 'lookup failed']);
 }
 ```
+
+```php
+<?php
+// api/seed.php — three fake events in a local SQLite file, so you can try the
+// endpoint without MySQL, without the live site, and without any credentials.
+$pdo = new PDO('sqlite:' . __DIR__ . '/events.db', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$pdo->exec('CREATE TABLE IF NOT EXISTS events (
+    event_id TEXT PRIMARY KEY, title TEXT, start_dt TEXT,
+    venue TEXT, url TEXT, updated_at TEXT)');
+$pdo->exec('DELETE FROM events');
+
+$rows = [
+    ['evt_123', 'Toronto Santa Claus Parade',    '2026-11-15 12:30:00', 'Queen St W',             'https://findtorontoevents.ca/e/123', '2026-11-04 20:00:00'],
+    ['evt_124', 'Cavalcade of Lights',           '2026-11-28 18:00:00', 'Nathan Phillips Square', 'https://findtorontoevents.ca/e/124', '2026-11-04 20:05:00'],
+    ['evt_125', 'Distillery Winter Village',     '2026-11-13 16:00:00', 'Distillery District',    'https://findtorontoevents.ca/e/125', '2026-10-01 09:00:00'],
+];
+$stmt = $pdo->prepare('INSERT INTO events VALUES (?, ?, ?, ?, ?, ?)');
+foreach ($rows as $r) { $stmt->execute($r); }
+echo 'seeded ' . count($rows) . " rows into api/events.db\n";
+```
+
+**Try it — nothing to install but PHP** (`php -S`, the built-in server, ships with PHP itself; any
+XAMPP/LAMP install already has it):
+
+```bash
+export EVENTS_API_TOKEN=devtoken    # the shared secret; on the live site this is a long random value
+php api/seed.php                    # writes api/events.db with 3 rows
+php -S 127.0.0.1:8080 -t api        # leave running in this terminal — this *is* the "web server"
+```
+
+Then in a second terminal (`-H` sends the header ServiceNow will send). On Windows, `set` instead of
+`export`, and `curl.exe`:
+
+| What you run | What comes back | What it proves |
+|---|---|---|
+| `curl -i http://127.0.0.1:8080/events.php` | `401` `{"error":"bad or missing token"}` | the secret is checked before any query runs |
+| `curl -s -H "X-API-Token: devtoken" http://127.0.0.1:8080/events.php` | `{"count":3,"events":[…]}` | the exact shape ServiceNow will parse |
+| `curl -s -H "X-API-Token: devtoken" 'http://127.0.0.1:8080/events.php?since=2026-11-04%2020:02:00'` | `{"count":1,…}` — just `evt_124` | the watermark filters; `%20` is the space |
+| `curl -s -H "X-API-Token: devtoken" 'http://127.0.0.1:8080/events.php?since=2026-11-04T20:02:00Z'` | `{"count":0,…}` | **the format trap** — see below |
+| `mv api/events.db events.bak`, then the second command again | `500` `{"error":"lookup failed"}` | errors do not leak; the reason is in the log |
+
+Put `mv events.bak api/events.db` back afterwards and you are working again.
+
+The fourth row is the one worth remembering. `updated_at` is stored as text — `2026-11-04 20:05:00` — and
+the query compares strings, so `2026-11-04T20:02:00Z` sorts *before* every row that day (a space sorts
+before a `T`), and the answer is an empty list instead of an error. **Send the watermark back in exactly
+the format it was given to you.**
+
+**Putting it on the live site** is one environment variable — the DSN — plus the token:
+
+```bash
+EVENTS_DB_DSN='mysql:host=localhost;dbname=events;charset=utf8mb4' \
+EVENTS_DB_USER='events_ro' EVENTS_DB_PASS='<db password>' \
+EVENTS_API_TOKEN='<long random value>'                      # or in a config file outside the web root
+```
+
+Point `-t` at that folder or drop the files in Apache/nginx as usual and they answer at
+`https://findtorontoevents.ca/api/events.php`, unchanged. Keep the token out of the repository, and be
+aware the URL has to be reachable **from the internet** — that is exactly the requirement a MID Server
+route (portfolio #3) exists to work around.
 
 Four things that matter in that file, and they are the same four that matter on the ServiceNow side:
 
@@ -1038,8 +1108,9 @@ Four things that matter in that file, and they are the same four that matter on 
 2. **A delta, not "everything".** `?since=` plus an `updated_at` index, so a 15-minute job moves
    hundreds of rows, not hundreds of thousands. The value you send as `since` is what everyone calls
    the **watermark** — A6 explains the word if it is new to you.
-3. **A limit.** `LIMIT 500` and a `next` cursor keep one slow query from timing out the caller. When
-   the reply has 500 rows, the job asks again with the newest `updated_at` it saw.
+3. **A limit.** `LIMIT 500` keeps one slow query from timing out the caller. When a reply comes back
+   with 500 rows, the job asks again with the newest `updated_at` it saw. Tidier still is a `next`
+   field in the reply, so the *endpoint* decides where the page stopped.
 4. **Errors that do not leak.** The caller gets "lookup failed"; the stack trace goes to the web
    server's error log.
 
