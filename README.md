@@ -815,6 +815,10 @@ the opposite direction, and they need to choose between three patterns. This app
 
 > Menu names drift between releases (Vancouver, Washington, Xanadu…). Where a module name is
 > version-dependent I say so instead of pretending it is fixed.
+>
+> Every section below carries a **Breadcrumbs** block — the exact clicks involved in setting that
+> thing up, so you can follow along in your own instance. The `sys_…_list.do` in brackets is the
+> table behind the module: paste it after your instance address when you cannot find a menu item.
 
 ### A1. What a REST Message actually gives you
 
@@ -846,6 +850,20 @@ reused by any script.
 
 That is the honest trade: low ceremony, no guarantees. If you need guarantees, use Flow Designer
 (retries, error branches) or a "to-send" table you drive yourself.
+
+**Breadcrumbs** — where each of those things actually lives:
+
+| To do this | Click path |
+|---|---|
+| Create or open a REST Message | **All → System Web Services → Outbound → REST Messages** (`sys_rest_message_list.do`) |
+| See the method, its endpoint and headers | open the message → **HTTP Methods** related list (one row per `GET`/`POST`) |
+| See the variables and their defaults | open the method → **HTTP Request Parameters** (`sys_rest_message_fn_parameters_list.do`) |
+| Keep the token/password out of the script | **Authentication** section on the message → *Basic* profile (older releases: the *Authentication profile* field; profiles are `sys_auth_profile_basic`) |
+| Route the call through a MID Server | message → **Use MID Server** → pick one from **All → MID Server → Servers** |
+| Run it without writing anything permanent | **All → System Definition → Scripts - Background** — paste the 5-line fix script from the main guide |
+
+Note what is *not* in that list: there is no "response" record anywhere. The response only exists
+while your script is running, which is why you log it if you want to look at it later.
 
 ### A2. Making it practical: your Toronto events database
 
@@ -954,6 +972,23 @@ Four things that matter in that file, and they are the same four that matter on 
 Rule of thumb: HTTP when you need a *shaped, filtered* feed across the internet; JDBC when you need
 *bulk* from a database you already trust.
 
+**Breadcrumbs — the pull direction (events → ServiceNow):**
+
+| Step | Click path |
+|---|---|
+| 1. Describe the endpoint | **All → System Web Services → Outbound → REST Messages → New** — name `Toronto Events`, endpoint `https://findtorontoevents.ca/api/events.php`, one method `getSince`, one parameter `since` (same tabs as A1) |
+| 2. Hold the token | message → **Authentication** section (or the method's **HTTP Headers**, if you must — but then the secret sits in a field people screenshot) |
+| 3. Schedule the pull | **All → System Definition → Scheduled Jobs → New → Automatically run a script of your choosing**; the script is stored in `sysauto_script`, the run-time rows you can watch are in `sys_trigger` (`sys_trigger_list.do`) |
+| 4. Land the rows somewhere | **All → System Definition → Tables** (`sys_db_object_list.do`) → `u_torontoeventsfinal`; field types are in **System Definition → Dictionary** |
+| 5. Or land them via an import set | **All → System Import Sets → Load Data**; the dedupe key is on the import set's **Coalesce** related list |
+| 6. Check the job ran | **All → System Definition → Scheduled Jobs** (last run / next run), or `sys_trigger_list.do` filtered to your job |
+
+The PHP file itself has no ServiceNow breadcrumb — it lives on the web host, not in the instance.
+Only its token and its URL ever appear in ServiceNow.
+
+**Breadcrumbs — the serve direction (ServiceNow → website):** that is A3, and it is a different set of
+records (`sys_ws_definition` + `sys_ws_operation`), not a REST Message.
+
 ### A3. Scripted REST API — the lab (ServiceNow *serves*)
 
 This is the reverse of the app: instead of ServiceNow calling out, you publish an address **outside
@@ -962,11 +997,25 @@ systems call**. Your PHP page, a mobile app, Power BI, Postman — anything that
 **What it is:** a REST API defined in two records — the API (name, namespace, base path) and one or
 more resources (HTTP method + script). Your script receives `request` and fills in `response`.
 
+**Breadcrumbs** — the whole build, in six clicks:
+
+| To do this | Click path |
+|---|---|
+| Create the API | **All → System Web Services → Scripted REST APIs → New** (`sys_ws_definition_list.do`); in some releases it sits under *System Web Services → Scripted Web Services → Scripted REST APIs* |
+| Add a resource | the API record → **Resources** related list → **New** (`sys_ws_operation_list.do`) |
+| Make the role it requires | **All → User Administration → Roles → New** → `x_1569490_iplookup.api_user` (`sys_user_role_list.do`) |
+| Give a caller that role | **All → User Administration → Users** → the integration user → **Roles** tab |
+| Test without a client | **All → System Web Services → REST API Explorer** |
+| Read the errors | **All → System Log → All** (`syslog_list.do`), filtered to this scope |
+
+One thing that trips people up before they even start: both records are **scoped**. Click the
+scope/app picker next to the banner (or **All → System Applications → My Company Applications**) and
+switch to `x_1569490_iplookup` first, or you will build the API in Global and then wonder why the
+app's other files cannot see it.
+
 ### Step by step
 
-**Step 1 — create the API.**
-Breadcrumb: **All → System Web Services → Scripted REST APIs → New** (in some releases: *System Web
-Services → Scripted Web Services → Scripted REST APIs*).
+**Step 1 — create the API.** Row 1 of the table above; the fields are what matter here.
 
 | Field | Value to use | Mandatory? | Why it matters |
 |---|---|---|---|
@@ -979,8 +1028,7 @@ Services → Scripted Web Services → Scripted REST APIs*).
 The resulting base path is `/api/<namespace>/<API ID>`, i.e.
 `https://<your-instance>.service-now.com/api/x_1569490_iplookup/ipinfo`.
 
-**Step 2 — add a resource.**
-Breadcrumb: on the API record → **Resources** tab → **New**.
+**Step 2 — add a resource.** Row 2 of the table above.
 
 | Field | Value | Mandatory? | Notes |
 |---|---|---|---|
@@ -1108,10 +1156,10 @@ gs.info('100F = ' + celsius + 'C');
 If `XMLDocument2` is not available in your release, import the WSDL instead (below) and let ServiceNow
 do the parsing for you — that is the trade.
 
-**The WSDL route.** Breadcrumb: **All → System Web Services → Outbound → (Import WSDL / SOAP
-Message)** — the module name is release-dependent; in older instances it is *Import WSDL* under
-System Web Services. Add the WSDL URL, and ServiceNow generates a message record plus one function per
-operation, with typed arguments. Your script then calls it by name instead of hand-writing envelopes.
+**The WSDL route** (row 2 of the table above; in older instances the module is simply *Import WSDL*
+under System Web Services). Add the WSDL URL, and ServiceNow generates a message record plus one
+function per operation, with typed arguments. Your script then calls it by name instead of
+hand-writing envelopes.
 Confirm the class name for your release before relying on it (some expose a SOAP-specific message
 class, others generate code that calls the message record).
 
@@ -1122,6 +1170,20 @@ It works, but compared with a Scripted REST API you get: manual WSDL, no explore
 awkward JSON conversion (none — it is XML in both directions), and very little community material.
 Publish REST unless a specific consumer only speaks SOAP; if so, put a tiny REST→SOAP bridge next to
 it (a PHP or Node service) rather than maintaining a WSDL inside ServiceNow.
+
+**Breadcrumbs — the three SOAP setups:**
+
+| To do this | Click path |
+|---|---|
+| Send a hand-built envelope (no records at all) | **All → System Definition → Scripts - Background** — paste the snippet above and read the log |
+| Import a WSDL and let ServiceNow write the code | **All → System Web Services → Outbound → Import WSDL** (some releases: **Outbound → SOAP Messages → New → Import WSDL**) → paste the `.asmx?WSDL` URL → **Generate** |
+| See what the import produced | **All → System Web Services → Outbound → SOAP Messages** — one message record, plus one function per WSDL operation, with typed arguments |
+| Look at the WSDL again | open the message record → the **WSDL** link/related link it carries |
+| Publish a SOAP service from ServiceNow (not recommended) | **All → System Web Services → Scripted SOAP Web Services → New** — older releases keep this under *System Web Services → Scripted Web Services* |
+| Test from outside | not in ServiceNow: Postman, SoapUI, or `curl` with the envelope in `--data` |
+
+If the *Import WSDL* module is missing entirely, that instance has SOAP outbound disabled or the
+plugin is not active — check with your admin rather than hunting the menu for ten minutes.
 
 ### SOAP's three classic failures
 
@@ -1144,6 +1206,14 @@ it (a PHP or Node service) rather than maintaining a WSDL inside ServiceNow.
 | Best at | asking another system a question | letting another system ask *you* | talking to a system that only speaks SOAP |
 | Ceremony | low | medium | high |
 | Modern choice? | yes | yes | only when forced |
+| Where you build it | **System Web Services → Outbound → REST Messages** | **System Web Services → Scripted REST APIs** | **System Web Services → Outbound → Import WSDL / SOAP Messages** |
+| Where you test it | **System Definition → Scripts - Background** | **System Web Services → REST API Explorer** | Postman / SoapUI, or Scripts - Background for a hand-built envelope |
+| The record behind it | `sys_rest_message` + `sys_rest_message_fn` | `sys_ws_definition` + `sys_ws_operation` | the SOAP message record created by the WSDL import |
+
+**Breadcrumbs:** the last three rows above are the ones you click — where to build it, where to test
+it, and the record to check when the menu hides the module. All three live under the same **System Web
+Services** menu, which is why "which one am I looking at?" is a fair question — the table names in
+that last row are the reliable answer.
 
 ### A6. What triggers what, and why
 
@@ -1158,6 +1228,17 @@ it (a PHP or Node service) rather than maintaining a WSDL inside ServiceNow.
 
 The pairing that covers most real work: **Scripted REST API for inbound, `RESTMessageV2` inside a
 scheduled job for outbound**, with Flow Designer where a non-developer must own it.
+
+**Breadcrumbs — where you create each trigger:**
+
+| Trigger | Click path | Table behind it |
+|---|---|---|
+| Business Rule | **All → System Definition → Business Rules → New** (or on the table: **Configure → Business Rules**) | `sys_script` |
+| Scheduled job | **All → System Definition → Scheduled Jobs → New** | `sysauto_script` (runs in `sys_trigger`) |
+| Flow Designer action | **All → Process Automation → Flow Designer → New → Action** | `sys_hub_action_type_definition` |
+| UI Action | **All → System Definition → UI Actions → New** (or on the form: **Configure → UI Actions**) | `sys_ui_action` |
+| Async Business Rule / event queue | **System Definition → Business Rules** (tick *asynchronous*), plus **All → System Policy → Events → Registry** and **→ Script Actions** (older releases: *System Definition → Events → Registry*) | `sysevent_register`, `sysevent_script_action` |
+| Inbound endpoint | see A3 | `sys_ws_definition` |
 
 ### A7. One debug checklist for all three
 
@@ -1174,3 +1255,18 @@ scheduled job for outbound**, with Flow Designer where a non-developer must own 
 Rules that save the most time: **log the request and the response body on failure**, **use a distinct
 status code per cause**, **never put secrets in a URL**, and **never call a slow system from a
 Business Rule** without an async step between them.
+
+**Breadcrumbs — the tools behind each question:**
+
+| Tool | Click path |
+|---|---|
+| See your own log lines | **All → System Log → All** (`syslog_list.do`) — filter **Source** to your script, or search for the tag you put in the message (`[ipinfo api]`) |
+| See how long a request took | **All → System Log → Transactions** (`syslog_transaction_list.do`) — this is where "it was slow" becomes a number |
+| Get line-by-line tracing | **All → System Diagnostics → Session Debug → Debug** (older: *System Diagnostics → Session Debug → Enable Debug*); turn it off afterwards, it is noisy and slow |
+| Re-run one call in isolation | **All → System Definition → Scripts - Background** — the smallest possible repro |
+| Test an inbound resource | **All → System Web Services → REST API Explorer** — same call, as you, with the request visible |
+| Check a MID Server | **All → MID Server → Servers** (status must be *Up*), then **→ Capabilities**; also `ecc_agent_list.do` |
+| Check an expired certificate | `sys_certificate_list.do` — look for a *Valid to* date in the past |
+
+If the same call works in *Scripts - Background* and fails from the website, the problem is auth or
+scope, not your code — the breadcrumb to compare is the *System Log → All* rows from each attempt.
