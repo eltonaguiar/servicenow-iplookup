@@ -14,10 +14,10 @@ Part of [eltonaguiar/ServiceNow_Portfolio](https://github.com/eltonaguiar/Servic
 
 ## Contents
 
+**The guide — in reading order:**
+
 1. [Start here: the 60-second version](#start-here-the-60-second-version)
 2. [Fundamentals: why call a website at all, and why this way?](#fundamentals-why-call-a-website-at-all-and-why-this-way)
-   - [What else could you use instead?](#what-else-could-you-use-instead)
-   - [When is this the wrong tool?](#when-is-this-the-wrong-tool)
 3. [What is happening, in everyday terms](#what-is-happening-in-everyday-terms)
 4. [Why the address has a blank in it](#why-the-address-has-a-blank-in-it)
 5. [What the answer looks like](#what-the-answer-looks-like)
@@ -26,13 +26,18 @@ Part of [eltonaguiar/ServiceNow_Portfolio](https://github.com/eltonaguiar/Servic
 8. [Real code: three complete examples](#real-code-three-complete-examples)
 9. [Run the original Fix Script yourself](#run-the-original-fix-script-yourself)
 10. [If it does not work](#if-it-does-not-work)
-11. [Prove it is the website, not ServiceNow](#prove-it-is-the-website-not-servicenow)
-12. [Build it yourself in four steps](#build-it-yourself-in-four-steps)
-13. [Words you will bump into](#words-you-will-bump-into)
-14. [What is in this repo](#what-is-in-this-repo)
-15. [Which branch to read](#which-branch-to-read)
-16. [Two things not to do](#two-things-not-to-do)
-17. [Appendix: the three ways in and out](#appendix-the-three-ways-in-and-out-and-tying-this-to-a-real-database)
+11. [Build it yourself in four steps](#build-it-yourself-in-four-steps)
+
+**The appendix — collapsed on purpose, open what you need:**
+
+12. [Appendix: everything that is not the REST Message](#appendix-everything-that-is-not-the-rest-message)
+    - [What else could you use instead?](#what-else-could-you-use-instead)
+    - [When is this the wrong tool?](#when-is-this-the-wrong-tool)
+    - [Prove it is the website, not ServiceNow](#prove-it-is-the-website-not-servicenow)
+    - [Words you will bump into](#words-you-will-bump-into)
+    - [What is in this repo](#what-is-in-this-repo)
+    - [Which branch to read](#which-branch-to-read)
+    - [Two things not to do](#two-things-not-to-do)
     - [A1. What a REST Message actually gives you](#a1-what-a-rest-message-actually-gives-you)
     - [A2. Your Toronto events database](#a2-making-it-practical-your-toronto-events-database)
     - [A3. Scripted REST API lab](#a3-scripted-rest-api--the-lab-servicenow-serves)
@@ -90,32 +95,6 @@ Because you get a record an administrator can look at, instead of a URL buried i
 `RESTMessageV2` is the piece of script that *uses* that saved record. So the split is: **the record
 holds the configuration, the script holds the logic.** That is why the same two lines work from a Fix
 Script, a Business Rule or a scheduled job — the details live in the record.
-
-### What else could you use instead?
-
-ServiceNow has several ways to reach another system. They are not rivals so much as different tools:
-
-| Approach | What it looks like | Good when | Watch out for |
-|---|---|---|---|
-| **Saved REST Message + `RESTMessageV2`** (this app) | a record plus two lines of script | you want one shared, admin-visible definition; auth profiles; reuse | you maintain a record; the script runs while the user waits |
-| **`RESTMessageV2` with a dynamic address** (`setEndpoint()`) | same class, address built in code | the URL is not known in advance (per-customer hosts, signed links) | nothing is visible in the menus any more — back to a URL in code |
-| **Flow Designer / Integration Hub action** | drag a REST step, no script | non-developers should own the automation; you want retries and error branches | may need a paid entitlement; harder to unit-test than script |
-| **A ready-made spoke** (Teams, Slack, SAP, Workday…) | pick the action, fill the form | a supported connector already exists | the connector decides what the call can do |
-| **MID Server routing** (`Use MID Server` on the REST Message) | same REST Message, ticked differently | the site is inside your network and ServiceNow cannot reach it | needs a healthy MID Server |
-| **Scripted REST API** | you *publish* an address others call | the direction is the other way round — outsiders calling in | nothing to do with this app; it is the mirror image |
-| **JDBC data source / export sets / Remote Table** | database link, file drop, live table | bulk movement, or a BI tool that wants files | not for one-off questions; some need a MID Server |
-
-Rule of thumb: **a question answered in a second, from a website → REST Message.** A nightly file or a
-database link → one of the bottom row's tools. A process a business analyst should own → Flow Designer.
-
-### When is this the wrong tool?
-
-- **Thousands of calls in a row.** The user (or the job) waits for each reply. Use a scheduled job in
-  batches (example 3 below) or a queue.
-- **The reply must never be lost.** A plain script call has no retry. Flow Designer, or a table that
-  records what still needs sending, gives you one.
-- **A supported connector already exists.** Rebuilding the Teams or SAP call by hand is wasted effort.
-- **The site is not reachable from ServiceNow.** Then add a MID Server rather than rewriting anything.
 
 ---
 
@@ -713,21 +692,6 @@ table is the quick way out.
 
 ---
 
-## Prove it is the website, not ServiceNow
-
-Worth doing once, because it separates two very different problems ("the website is down" versus
-"my script is wrong"). In a terminal:
-
-```bash
-curl -s https://ipinfo.io/8.8.8.8/json
-curl -s https://ipinfo.io/1.1.1.1/json
-```
-
-If those work but ServiceNow does not, the problem is on the ServiceNow side — most often network
-access, not the REST Message.
-
----
-
 ## Build it yourself in four steps
 
 You do not need the files in this repo to recreate it:
@@ -745,7 +709,112 @@ credentials.
 
 ---
 
-## Words you will bump into
+## Appendix: everything that is not the REST Message
+
+Nothing here is needed to use the app or to follow the guide above. It is the side material — other
+tools, the opposite direction, the glossary, the repo housekeeping — and then the seven A-labs.
+
+Every block is collapsed on purpose, so the page stays the length of the actual app. Open what you
+need and close it again.
+
+### What else could you use instead?
+
+<details>
+<summary><strong>Show — the alternatives table and a worked Scripted REST API use case</strong></summary>
+
+ServiceNow has several ways to reach another system. They are not rivals so much as different tools:
+
+| Approach | What it looks like | Good when | Watch out for |
+|---|---|---|---|
+| **Saved REST Message + `RESTMessageV2`** (this app) | a record plus two lines of script | you want one shared, admin-visible definition; auth profiles; reuse | you maintain a record; the script runs while the user waits |
+| **`RESTMessageV2` with a dynamic address** (`setEndpoint()`) | same class, address built in code | the URL is not known in advance (per-customer hosts, signed links) | nothing is visible in the menus any more — back to a URL in code |
+| **Flow Designer / Integration Hub action** | drag a REST step, no script | non-developers should own the automation; you want retries and error branches | may need a paid entitlement; harder to unit-test than script |
+| **A ready-made spoke** (Teams, Slack, SAP, Workday…) | pick the action, fill the form | a supported connector already exists | the connector decides what the call can do |
+| **MID Server routing** (`Use MID Server` on the REST Message) | same REST Message, ticked differently | the site is inside your network and ServiceNow cannot reach it | needs a healthy MID Server |
+| **Scripted REST API** | you *publish* an address others call | the direction is the other way round — outsiders calling in | nothing to do with this app; it is the mirror image |
+| **JDBC data source / export sets / Remote Table** | database link, file drop, live table | bulk movement, or a BI tool that wants files | not for one-off questions; some need a MID Server |
+
+Rule of thumb: **a question answered in a second, from a website → REST Message.** A nightly file or a
+database link → one of the bottom row's tools. A process a business analyst should own → Flow Designer.
+
+#### A worked use case for the mirror image: when *you* are the address
+
+The table above says of this pattern, in its own words:
+
+> **Scripted REST API** — "you *publish* an address others call"; "the direction is the other way
+> round — outsiders calling in"; "nothing to do with this app; it is the mirror image".
+
+Read that last column carefully, because it is easy to misread. "Nothing to do with this app" means
+*this app does not need it* — not *you will never need it*. The mirror image shows up the moment
+somebody asks your instance a question instead of the other way round.
+
+**The scenario.** Your Toronto events site (A2) has a small sign-up form, and whoever runs the
+newsletter wants to know which city each sign-up came from. Three things want that answer: the PHP
+site as it writes the row, a Node job that backfills the old rows, and a Power BI report that
+re-checks them monthly.
+
+Calling ipinfo.io from each of them means three copies of the HTTP client, three copies of the error
+handling, three places an API key would eventually live, and three separate rate-limit budgets to
+exceed.
+
+**Publishing one Scripted REST API instead** turns that into one address:
+
+| What the caller does | What ServiceNow does |
+|---|---|
+| `GET https://<instance>/api/x_1569490_iplookup/ipinfo/lookup?ip=8.8.8.8` as a basic-auth user | checks that user has `x_1569490_iplookup.api_user` |
+| sends nothing else, holds no key | runs the same `IpInfoLookup` Script Include the main guide builds |
+| reads `{"ip":…,"city":…,"country":…,"org":…}` | fills `request`, sets a status, `JSON.stringify`s the body |
+| — | optionally writes a row of your own (say `u_ip_lookup`) so "who asked for what" is answerable later |
+
+Four things you get that copying the client three times never gives you: **one place the key lives**,
+**one rate-limit budget**, **one response shape** the three callers share, and **a log of who asked**
+— which is also the first question anyone asks after something goes wrong.
+
+**What you take on.** The endpoint is a contract now: outside systems depend on that JSON shape, so
+you version it instead of quietly changing it; the uptime is yours, so a dead ipinfo.io becomes your
+`502`; and every caller needs a user with exactly one role — which is A3's *Requires role* field
+earning its keep.
+
+The step-by-step build is [A3](#a3-scripted-rest-api--the-lab-servicenow-serves).
+
+</details>
+
+### When is this the wrong tool?
+
+<details>
+<summary><strong>Show — the four cases where this app is the wrong choice</strong></summary>
+
+- **Thousands of calls in a row.** The user (or the job) waits for each reply. Use a scheduled job in
+  batches (example 3 above) or a queue.
+- **The reply must never be lost.** A plain script call has no retry. Flow Designer, or a table that
+  records what still needs sending, gives you one.
+- **A supported connector already exists.** Rebuilding the Teams or SAP call by hand is wasted effort.
+- **The site is not reachable from ServiceNow.** Then add a MID Server rather than rewriting anything.
+
+</details>
+
+### Prove it is the website, not ServiceNow
+
+<details>
+<summary><strong>Show — the two-line curl proof</strong></summary>
+
+Worth doing once, because it separates two very different problems ("the website is down" versus
+"my script is wrong"). In a terminal:
+
+```bash
+curl -s https://ipinfo.io/8.8.8.8/json
+curl -s https://ipinfo.io/1.1.1.1/json
+```
+
+If those work but ServiceNow does not, the problem is on the ServiceNow side — most often network
+access, not the REST Message.
+
+</details>
+
+### Words you will bump into
+
+<details>
+<summary><strong>Show — the glossary</strong></summary>
 
 | Word | What it means here |
 |---|---|
@@ -758,9 +827,12 @@ credentials.
 | **MID Server** | a helper that sits inside your network, needed when ServiceNow itself cannot reach a site |
 | **200** | web short-hand for "that worked" (404 means "not found", 403 means "not allowed") |
 
----
+</details>
 
-## What is in this repo
+### What is in this repo
+
+<details>
+<summary><strong>Show — every file in this repo</strong></summary>
 
 ```
 79fe5701835fc750e958cd19feaad39d/       the app — every file here is written by ServiceNow
@@ -776,7 +848,12 @@ credentials.
 sn_source_control.properties            tells ServiceNow where the app sits in this repo
 ```
 
-## Which branch to read
+</details>
+
+### Which branch to read
+
+<details>
+<summary><strong>Show — which branch holds what</strong></summary>
 
 ServiceNow created this repository and keeps writing to its own branches. `main` is the one made for
 reading:
@@ -790,7 +867,12 @@ reading:
 If the app changes in ServiceNow, the two ServiceNow branches update first and `main` follows when
 someone re-publishes it.
 
-## Two things not to do
+</details>
+
+### Two things not to do
+
+<details>
+<summary><strong>Show — the two warnings</strong></summary>
 
 - **Do not edit the app files by hand.** ServiceNow writes them and checks them; a hand edit stops
   the app importing cleanly. Change the app in ServiceNow instead.
@@ -800,12 +882,13 @@ someone re-publishes it.
 
 This app only calls out. It cannot be called from outside — if you want that direction, see the
 Remote Table sample (#6) in the portfolio.
+
+</details>
+
 ---
 
-## Appendix: the three ways in and out, and tying this to a real database
-
-Everything above is **outbound**: ServiceNow asks a website a question. Real integrations also need
-the opposite direction, and they need to choose between three patterns. This appendix answers:
+Everything in the main guide is **outbound**: ServiceNow asks a website a question. Real integrations
+also need the opposite direction, and they need to choose between three patterns. The A-labs answer:
 
 - what a REST Message actually gives you (and what it does not),
 - how to wire this to the Toronto events database, including what the PHP wrapper *is*,
@@ -816,9 +899,9 @@ the opposite direction, and they need to choose between three patterns. This app
 > Menu names drift between releases (Vancouver, Washington, Xanadu…). Where a module name is
 > version-dependent I say so instead of pretending it is fixed.
 >
-> Every section below carries a **Breadcrumbs** block — the exact clicks involved in setting that
-> thing up, so you can follow along in your own instance. The `sys_…_list.do` in brackets is the
-> table behind the module: paste it after your instance address when you cannot find a menu item.
+> Every A-lab carries a **Breadcrumbs** block — the exact clicks involved in setting that thing up, so
+> you can follow along in your own instance. The `sys_…_list.do` in brackets is the table behind the
+> module: paste it after your instance address when you cannot find a menu item.
 
 ### A1. What a REST Message actually gives you
 
@@ -953,7 +1036,8 @@ Four things that matter in that file, and they are the same four that matter on 
 1. **A secret, not a query-string password.** The token travels in a header; the ServiceNow REST
    Message holds it, and the script never does.
 2. **A delta, not "everything".** `?since=` plus an `updated_at` index, so a 15-minute job moves
-   hundreds of rows, not hundreds of thousands.
+   hundreds of rows, not hundreds of thousands. The value you send as `since` is what everyone calls
+   the **watermark** — A6 explains the word if it is new to you.
 3. **A limit.** `LIMIT 500` and a `next` cursor keep one slow query from timing out the caller. When
    the reply has 500 rows, the job asks again with the newest `updated_at` it saw.
 4. **Errors that do not leak.** The caller gets "lookup failed"; the stack trace goes to the web
@@ -1240,33 +1324,184 @@ scheduled job for outbound**, with Flow Designer where a non-developer must own 
 | Async Business Rule / event queue | **System Definition → Business Rules** (tick *asynchronous*), plus **All → System Policy → Events → Registry** and **→ Script Actions** (older releases: *System Definition → Events → Registry*) | `sysevent_register`, `sysevent_script_action` |
 | Inbound endpoint | see A3 | `sys_ws_definition` |
 
+#### What "a watermark" means
+
+That scheduled-job row says "you need a watermark and a page size", which is jargon doing a plain job:
+
+a **watermark is the highest value you have already dealt with**, written down, so the next run can
+ask for *everything after that* instead of *everything*. It comes from the painted marks on a river
+gauge — the line showing how high the water got last time.
+
+Concretely, in A2 we pull events. Without a watermark, every run asks for all of them. With one, the
+run sends `?since=<the newest timestamp you stored last time>` and gets back only what changed:
+
+| Kind of mark | What you store | What you ask for next | Trade-off |
+|---|---|---|---|
+| **timestamp** (most common) | the newest `updated_at` that came back | `?since=<that value>` | simple; can miss a row saved with an older timestamp just after you read the mark |
+| **id / sequence** | the highest `id` seen | `WHERE id > <that value>` | nothing skipped, but only works if ids only ever go up |
+| **overlap window** | newest timestamp minus a few minutes | `?since=<slightly earlier>` | fetches a handful of rows twice — which is why the write side must upsert, not insert |
+
+What it looks like in the job — three lines matter, and the last one is the one people get wrong:
+
+```javascript
+// 1. read the mark (a system property, so it survives restarts and clones)
+var mark = gs.getProperty('x_1569490_iplookup.events_last_sync', '1970-01-01 00:00:00');
+
+var msg = new sn_ws.RESTMessageV2('Toronto Events', 'getSince');
+msg.setStringParameterNoEscape('since', mark);        // ← the watermark leaves as ?since=
+var res = msg.execute();
+
+// …store the events (upsert on event_id), and remember the newest updated_at you saw…
+
+// 2. move the mark forward ONLY after the rows are stored
+if (stored === true) {
+    gs.setProperty('x_1569490_iplookup.events_last_sync', newestSeen);
+}
+```
+
+Four rules that turn a watermark from "works today" into "works unattended":
+
+1. **Move the mark after the write, never before.** Move it first and a failed insert loses those rows
+   for ever — the next run starts past them.
+2. **Page, then loop.** `LIMIT 500` plus "keep asking while a full page comes back", or a busy day
+   silently truncates at 500. The page size is the second half of that A6 row.
+3. **Use the same clock and format** the far end writes in (UTC, ISO-8601, whatever it says). Mixing
+   local time and UTC does not fail loudly; it just skips a few rows.
+4. **Overlap a little.** Two minutes of re-fetch costs nothing if your write is an upsert, and covers
+   the row that was committed a second after you read the mark.
+
+Example 3 above sidesteps the whole idea on purpose: it selects rows where `u_city` is still empty, so
+"already done" is visible in the data itself. That works for a backlog and not for a feed — a feed of
+"everything since X" cannot be re-derived from the rows you already hold.
+
 ### A7. One debug checklist for all three
 
-| Question | Where to look |
+Same order every time, whether the call is outbound (`RESTMessageV2`), inbound (a Scripted REST API)
+or SOAP. Each step below gives you what you see, where you click, and the smallest snippet that
+settles it.
+
+The four screens you will live in: **System Log → All** (`syslog_list.do`), **System Log →
+Transactions** (`syslog_transaction_list.do`), **REST API Explorer**, and **Scripts - Background**.
+
+#### 1. Did the call even leave?
+
+**You see:** no reply at all, `getStatusCode()` is `0`, or the job finishes suspiciously fast.
+
+- Outbound, `0` means ServiceNow never got an HTTP answer: DNS, a firewall, or a MID Server that is
+  not running. Check **All → MID Server → Servers** (status must be *Up*), or `ecc_agent_list.do`.
+- Inbound, the caller's `curl` hangs or reports "connection refused": the instance is not reachable
+  from that network. That is a firewall question, not a script one.
+
+```javascript
+var msg = new sn_ws.RESTMessageV2('x_1569490_iplookup.IPInfo', 'Default GET');
+gs.info('[probe] endpoint=' + msg.getEndpoint());          // the URL it will really use
+var res = msg.execute();
+gs.info('[probe] code=' + res.getStatusCode() + ' err=' + res.getErrorMessage());
+```
+
+Read the `err=` half, it is more specific than the `0`: nothing at all is usually DNS, "Connection
+refused" is the port or a proxy, "timeout" is usually the MID Server or a firewall.
+
+#### 2. What exactly was sent?
+
+**You see:** a `400`/`404` from the far end, or "not a valid IP address" when you know the value is
+fine.
+
+- The signature failure: the reply, or your log, contains a literal `${ipaddress}`. The name inside
+  `${…}` and the name in the variable list disagree, or nothing set it. Compare **All → System Web
+  Services → Outbound → REST Messages → `IPInfo` → HTTP Methods → `Default GET`** (its **Endpoint**
+  field) against the **Variable Substitutions** list on that same form; `sys_rest_message_fn_parameters_list.do`
+  shows every variable in the instance in one flat list.
+- Then write down the URL you expect, and compare it with the one the far end complains about:
+
+```javascript
+var ip = '8.8.8.8';
+gs.info('[probe] expecting GET https://ipinfo.io/' + ip + '/json');
+```
+
+If the far end quotes a URL containing `${`, this step is your whole problem and the rest of the
+checklist is wasted time.
+
+#### 3. What did they say?
+
+**You see:** a status you did not expect, and no explanation.
+
+- Log the body, not just the code. A `500` whose body is an HTML page is the website's own front door
+  failing, not an API answer:
+
+```javascript
+if (res.getStatusCode() !== 200) {
+    gs.error('[probe] ' + res.getStatusCode() + ' headers=' + res.getHeaders());
+    gs.error('[probe] body=' + res.getBody());
+}
+```
+
+- In those headers, `content-type: text/html` means you were served an error page. `429`, or
+  `X-RateLimit-Remaining: 0`, means slow down — no amount of code fixing will help.
+
+#### 4. Why did my resource 500?
+
+**You see:** the caller gets a `500` and an empty body, and nothing else.
+
+- The caller is told nothing on purpose; the trace stays server-side. **All → System Log → All**
+  (`syslog_list.do`), filtered to your scope, or search the tag you planted.
+- Plant the tag first — one line at the top of the resource pays for itself:
+
+```javascript
+gs.info('[ipinfo api] ip=' + request.queryParams.ip + ' user=' + gs.getUserName());
+```
+
+- The same event, with its duration and user, is in **All → System Log → Transactions**
+  (`syslog_transaction_list.do`) — which is also how you answer "who called me at 3am".
+
+#### 5. Is it slow, or dead?
+
+**You see:** a spinner, a timeout, or a Business Rule that feels broken.
+
+- Time it outside ServiceNow first, so you know what you are arguing with:
+
+```bash
+curl -s -o /dev/null \
+  -w 'dns=%{time_namelookup} connect=%{time_connect} total=%{time_total}\n' \
+  https://ipinfo.io/8.8.8.8/json
+```
+
+- Then inside: the duration column in `syslog_transaction_list.do`. Several seconds inside a Business
+  Rule is a design bug; the same number inside a nightly job is merely slow.
+- Inbound: time the resource in **REST API Explorer**. It runs the same script in the same scope, so
+  if it is fast there and slow from the website, the time is in the network or the caller's retries.
+
+#### 6. Is it a permission problem or a logic problem?
+
+**You see:** `401`/`403`, an empty result, or something that works for you and fails for everyone else.
+
+- Split the two: run the same thing as an admin (**Scripts - Background**, **REST API Explorer**) and
+  as the real caller (`curl -u`). Fine as admin + `403` as the caller = auth, not code.
+- Log who actually arrived, because "works on my machine" usually means "runs as a different user":
+
+```javascript
+gs.info('[ipinfo api] user=' + gs.getUserName() +
+        ' has_api_user=' + gs.hasRole('x_1569490_iplookup.api_user'));
+```
+
+- Same shape outbound: a job running as `system` does not hit the ACLs a Business Rule running as the
+  user does. If it works in one place and not the other, compare the users before touching the script.
+
+#### 7. Did it work yesterday and not today?
+
+**You see:** a call nobody has edited since the last time it worked. Each suspect has a screen:
+
+| Suspect | Where to confirm it |
 |---|---|
-| Did the call even leave? | outbound: `getStatusCode() === 0` means no reply at all; check network/MID |
-| What exactly was sent? | log the substituted address and the body, not just "it failed" |
-| What did they say? | the body — always log the body on failure, not just the code |
-| Why did my resource 500? | **System Log → All**, filtered to your scope; the caller never sees it |
-| Is it slow, or dead? | time one call in the explorer / with curl before blaming ServiceNow |
-| Is it a permission or a logic problem? | strip the logic to a "ping" resource or a bare call; if ping works, it is logic |
-| Did it work yesterday and not today? | check for a changed token, an expired certificate, a new role requirement, or a rate limit |
+| the token or password was rotated | the auth profile record (`sys_auth_profile_basic`) against the provider's dashboard |
+| the certificate expired | `sys_certificate_list.do` — a *Valid to* date in the past |
+| a role was added to the resource | `sys_ws_operation.list` → **Requires role** |
+| you are being rate limited | reply `429`, or `X-RateLimit-Remaining: 0` in `res.getHeaders()` |
+| the far end changed its response shape | the body, next to the field names your script reads |
+
+Sort **All → System Log → All** newest-first: a wall of `401`s starting at 09:00 is a credential
+rotation, not a code change.
 
 Rules that save the most time: **log the request and the response body on failure**, **use a distinct
 status code per cause**, **never put secrets in a URL**, and **never call a slow system from a
 Business Rule** without an async step between them.
-
-**Breadcrumbs — the tools behind each question:**
-
-| Tool | Click path |
-|---|---|
-| See your own log lines | **All → System Log → All** (`syslog_list.do`) — filter **Source** to your script, or search for the tag you put in the message (`[ipinfo api]`) |
-| See how long a request took | **All → System Log → Transactions** (`syslog_transaction_list.do`) — this is where "it was slow" becomes a number |
-| Get line-by-line tracing | **All → System Diagnostics → Session Debug → Debug** (older: *System Diagnostics → Session Debug → Enable Debug*); turn it off afterwards, it is noisy and slow |
-| Re-run one call in isolation | **All → System Definition → Scripts - Background** — the smallest possible repro |
-| Test an inbound resource | **All → System Web Services → REST API Explorer** — same call, as you, with the request visible |
-| Check a MID Server | **All → MID Server → Servers** (status must be *Up*), then **→ Capabilities**; also `ecc_agent_list.do` |
-| Check an expired certificate | `sys_certificate_list.do` — look for a *Valid to* date in the past |
-
-If the same call works in *Scripts - Background* and fails from the website, the problem is auth or
-scope, not your code — the breadcrumb to compare is the *System Log → All* rows from each attempt.
