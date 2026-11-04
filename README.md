@@ -337,6 +337,17 @@ are complete files, not fragments.
 
 ### Example 1 — a reusable Script Include
 
+> **At a glance**
+> - **You get:** one function, `lookup('8.8.8.8')`, callable from any server-side script, that always
+>   returns the same shape — `{ ok, status, ip, city, country, org, loc, timezone }` on success,
+>   `{ ok: false, error }` on any failure. It never throws, so one bad address cannot break a batch.
+> - **You provide:** the Script Include record (name `IpInfoLookup`, *Accessible from: All application
+>   scopes* only if other apps need it, **not** client-callable) and an IP address string.
+> - **Why it is worth it:** the error handling is written once, not three times; changing ipinfo for
+>   something else later means editing one file; every caller reports the same way.
+> - **Still your job:** deciding what to do with a failure, and whether to retry. The include reports,
+>   it does not act.
+
 This is the piece to write once and call from everywhere else. Create a Script Include named
 `IpInfoLookup`, **not** client-callable, and paste this in:
 
@@ -430,6 +441,17 @@ has to check for `null`, and one bad address cannot break a whole batch.
 
 ### Example 2 — a Business Rule that fills in fields
 
+> **At a glance**
+> - **You get:** four fields filled in by themselves whenever someone saves a record with an address
+>   (`u_city`, `u_country`, `u_org`, `u_geo`), a log line per lookup, and a warning instead of an error
+>   when ipinfo is unreachable — the save still goes through.
+> - **You provide:** a table with an `ip_address` field and those four fields, the Script Include from
+>   example 1, and a rule on **before → insert and update**.
+> - **Why it is worth it:** nobody has to press a button, and the "only if the address changed" guard
+>   means a record edited ten times costs one call, not ten.
+> - **Still your job:** knowing what a call costs. This runs while the user waits, so keep it off
+>   high-volume tables and never let a slow website hold a form hostage.
+
 Put this on a table with an `ip_address` field and somewhere to store the answer (`u_city`,
 `u_country`, `u_org`). It runs only when the address is new or has changed, so you are not calling the
 internet on every single save:
@@ -471,6 +493,17 @@ warning instead of stopping the save (a website being down should never stop som
 while the user waits.
 
 ### Example 3 — a scheduled job that fills in a backlog
+
+> **At a glance**
+> - **You get:** an existing table of addresses filled in overnight, plus one log line saying
+>   `updated=37 failed=2 skipped=11` — enough to tell "working" from "silently doing nothing".
+> - **You provide:** the table and its field names, the Script Include, a schedule, and a batch size you
+>   are comfortable with (50 here).
+> - **Why it is worth it:** it is resumable by construction — it only selects rows where `u_city` is
+>   still empty — so re-running it continues where it stopped instead of redoing work, and nobody waits
+>   for it.
+> - **Still your job:** staying inside the rate limit. Free ipinfo calls are throttled; 50 per run is
+>   deliberate, and a bigger number will look like a broken job rather than a fast one.
 
 Use this when you already have a table full of addresses with empty location columns. It runs on its
 own, handles a batch, and logs a summary:
@@ -520,6 +553,21 @@ own, handles a batch, and logs a summary:
 Schedule it daily at a quiet hour. The `setLimit` matters: free ipinfo.io calls are rate limited, and a
 job that tries thousands at once gets throttled and looks broken. Private addresses (`10.x`, `192.168.x`)
 are not on the internet at all, which is what `skipped` counts.
+
+### What the API gives you, and what it does not
+
+Worth being blunt about, because it decides how much of the three examples you actually need:
+
+| ipinfo.io gives you | ipinfo.io does **not** give you |
+|---|---|
+| `ip`, `hostname` — what the address is called | a street address, or a person |
+| `city`, `region`, `country`, `postal`, `loc` — approximate place | certainty: VPNs, mobile networks and corporate proxies all lie |
+| `org` — the network owner (ASN + company) | a guarantee it answered: it can be slow, rate limited, or down |
+| `timezone` | anything about addresses **inside** your network (`10.x`, `192.168.x`) — those are `bogon`, not on the internet |
+
+So the sensible division of labour is: **ipinfo answers; your code remembers.** Store the answer on the
+record the first time you get it (what examples 2 and 3 do), and only ask again when the address
+changes. That one habit removes most of the rate-limit and latency problems before they start.
 
 ### Which one do I need?
 
