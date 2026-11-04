@@ -178,14 +178,70 @@ from someone typing it in, from a list — by changing a single line in the scri
 
 Two small rules:
 
-1. **The name has to match on both sides.** The blank is called `ipaddress` in the address, so the
-   app must also have a variable called `ipaddress`. If those two names differ by even one letter,
-   ServiceNow sends the text `${ipaddress}` to ipinfo.io instead of an address — and ipinfo.io
-   politely says that is not an IP address.
+1. **The name has to match on both sides.** There are two places, and both must say `ipaddress`:
+
+   | Side | Exact location | What you should see |
+   |---|---|---|
+   | the address | REST Message `IPInfo` → **HTTP Methods** tab → open `Default GET` → **Endpoint** field | `https://ipinfo.io/${ipaddress}/json` |
+   | the definition | the **same** `Default GET` form → scroll to the **Variable Substitutions** related list at the bottom → the row's **Name** field | `ipaddress` (with `8.8.8.8` in **Value**) |
+
+   In menu terms: **All → System Web Services → Outbound → REST Message → `IPInfo`**, open the method,
+   and look at the two areas above. In URL terms: `sys_rest_message_list.do` for the message,
+   `sys_rest_message_fn_list.do` for the methods, `sys_rest_message_fn_parameters_list.do` for the
+   variables. If the names differ by even one letter — or the Variable Substitutions list is empty —
+   ServiceNow sends the text `${ipaddress}` to ipinfo.io instead of an address, and ipinfo.io politely
+   replies that it is not an IP address.
 2. **There is a "fill in exactly as written" version** of the fill-in command
    (`setStringParameterNoEscape`). The other version tidies your value for use inside a web address
    (turning spaces into `%20`). For something like `8.8.8.8` either works, and the app uses the
    "exactly as written" one.
+
+### Where does the name `ipaddress` come from, exactly?
+
+It is not magic and it is not built in — **somebody typed it**, and you can see the typing here:
+
+**Breadcrumb:** All → System Web Services → Outbound → REST Message → `IPInfo` → **HTTP Methods**
+tab → open `Default GET` → scroll to the **Variable Substitutions** related list. (Faster: put
+`sys_rest_message_fn_parameters_list.do` in the URL bar — one row per variable, filter by
+*REST Message = IPInfo*.)
+
+That list is the whole story. Each row is a name and a default value, and the endpoint above simply
+mentions one of those names in `${...}` form:
+
+| Piece | Where it lives | In this app |
+|---|---|---|
+| the text `${ipaddress}` | the method's **Endpoint** field | `https://ipinfo.io/${ipaddress}/json` |
+| the variable itself | the method's **Variable Substitutions** list | Name `ipaddress`, Value `8.8.8.8` |
+| the value used for one specific call | your script | `setStringParameterNoEscape('ipaddress', '1.1.1.1')` — overrides the default for that call only |
+| what happens when no match is found | nowhere to substitute | the text `${ipaddress}` is sent to the website literally |
+
+At `execute()` time ServiceNow scans the endpoint, the headers and the body for `${someName}` and
+replaces each one with the value of the variable with that name. That is all the "template engine" is.
+
+### "Can someone just put whatever?"
+
+Two different answers, because two different things are arbitrary:
+
+**The name is arbitrary.** `ipaddress` was chosen by whoever built the app. You could name it `${thing}`
+and, as long as the Variable Substitutions list has a row named `thing`, ServiceNow would happily fill
+it in. The name is only a label shared between the URL and the list — it carries no meaning to
+ServiceNow. (It does carry meaning to the *website*: `${thing}` in that slot still lands in the path
+where ipinfo.io expects an IP, so a working blank with a silly name is still a broken lookup.)
+
+**The value is arbitrary too — and nothing checks it.** The variable is text. Put `hello` in it and
+ServiceNow builds `https://ipinfo.io/hello/json` and sends it; the *website* is the thing that decides
+that is not an address. That is exactly why the reusable Script Include further down checks the shape
+of an IPv4 address before spending a call, and why a failed lookup is reported as a failure instead of
+being stored.
+
+Two consequences worth knowing:
+
+- **This is configuration, not code.** Anyone who can edit the REST Message (an admin, or a delegated
+developer role) can change the endpoint, the variable names, or the authentication. Review it like you
+would review a script — it decides where your data goes.
+- **A variable is not a guard against bad input.** If the value comes from a field a user typed into,
+  it can contain spaces, slashes or `?&=` characters, and it goes straight into a URL path. Validate it
+  (the IPv4 check) or use the escaping version of the fill-in command, which encodes those characters.
 
 ---
 
