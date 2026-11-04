@@ -218,6 +218,51 @@ mentions one of those names in `${...}` form:
 At `execute()` time ServiceNow scans the endpoint, the headers and the body for `${someName}` and
 replaces each one with the value of the variable with that name. That is all the "template engine" is.
 
+### "But how does the code *know* to put `8.8.8.8` in there?"
+
+It does not know. It is **told** — in the second line of the script:
+
+```javascript
+rm.setStringParameterNoEscape('ipaddress', '8.8.8.8');
+//                             ^^^^^^^^^    ^^^^^^^
+//                             which blank  what to put in it
+```
+
+Two arguments: **the name of the blank**, and **the value for it**. That is the entire mechanism —
+there is no inference, no looking at the reply, no guessing from the URL.
+
+The `"ip": "8.8.8.8"` you see in the JSON is a different thing entirely: it is ipinfo **telling you
+what it just received**. An echo, not a source. Look at the order of events — the reply comes last, so
+it cannot have supplied the value:
+
+```
+1. script says:        ipaddress = 8.8.8.8
+2. ServiceNow builds:  https://ipinfo.io/8.8.8.8/json
+3. request goes out
+4. reply comes back:   {"ip": "8.8.8.8", "city": "Mountain View", ...}
+```
+
+Three `8.8.8.8`s appear in this page, and they are three different things:
+
+| Where it appears | What it is | Who put it there |
+|---|---|---|
+| `${ipaddress}` in the endpoint | a hole waiting to be filled | whoever built the REST Message |
+| `'8.8.8.8'` in `setStringParameterNoEscape(...)` | the value for that hole, for this one call | your script |
+| `"ip": "8.8.8.8"` in the reply | the API confirming what it received | ipinfo.io |
+
+**Prove it in ten seconds.** Change one string in the script:
+
+```javascript
+rm.setStringParameterNoEscape('ipaddress', '1.1.1.1');
+```
+
+Run it again and the reply says `"ip": "1.1.1.1"` — because the value you handed to the blank changed,
+so the URL changed, so the question changed. Nothing else was edited.
+
+**And if the script never sets it?** The default on the Variable Substitutions row is used: `8.8.8.8`.
+So an untouched app still works — that default is what makes `Elton Test Integration` runnable as
+shipped.
+
 ### "Can someone just put whatever?"
 
 Two different answers, because two different things are arbitrary:
