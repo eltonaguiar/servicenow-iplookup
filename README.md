@@ -343,24 +343,61 @@ up, but if you call me a lot, please create a free key". Nothing in this app bre
 
 ## The script, explained line by line
 
+Every line commented, with what you have in hand once the line has run:
+
 ```javascript
+// 1. PICK UP THE SAVED CALL. Nothing is sent yet.
+//    'x_1569490_iplookup.IPInfo' = <app scope>.<REST Message name>
+//    'Default GET'               = the method (a.k.a. function) inside that message
+//    Have now: r = a prepared request. The URL still contains the blank,
+//              https://ipinfo.io/${ipaddress}/json
 var r = new sn_ws.RESTMessageV2('x_1569490_iplookup.IPInfo', 'Default GET');
+
+// 2. FILL THE BLANK. First argument = which blank (must match the URL and the
+//    Variable Substitutions row), second = the value.
+//    "NoEscape" = send it exactly as written; the other version would URL-encode
+//    the value (spaces become %20), which matters for free text, not for an IP.
+//    Have now: a complete URL, https://ipinfo.io/8.8.8.8/json — still unsent.
 r.setStringParameterNoEscape('ipaddress', '8.8.8.8');
+
+// 3. SEND IT. The only line that touches the network, the only one that can be
+//    slow, and the only one that can fail before any reply exists.
+//    Have now: response = the whole reply (status code, headers, body).
+//    Nothing has been read out of it yet.
 var response = r.execute();
+
+// 4. READ THE REPLY AS TEXT. It looks like an object on screen, but to
+//    ServiceNow it is a string; you need JSON.parse() before you can ask for
+//    responseBody.city.
+//    Have now: responseBody = '{"ip":"8.8.8.8","hostname":"dns.google", ...}'
 var responseBody = response.getBody();
 
-// Show the answer on screen. A Fix Script only displays something when
-// the script reports a problem, so we deliberately report the answer.
+// 5. SHOW IT. A Fix Script only displays something when the script reports a
+//    problem, so we deliberately report the good answer. This is a testing
+//    trick: real code logs it or writes it into a record instead.
+//    Have now: a pop-up reading "Elton was here! Response: {...}"
 throw "Elton was here! Response: " + responseBody;
 ```
 
+### What you have after each line
+
+| After | You have | You do **not** have yet |
+|---|---|---|
+| 1 | a prepared request object, pointing at a saved REST Message method | a value for the blank; no network activity has happened |
+| 2 | a fully formed URL — read it back with `r.getEndpoint()` if you want proof | still nothing sent |
+| 3 | the reply: `getStatusCode()`, `getHeaders()`, `getBody()`, `getErrorMessage()` | the body split into usable fields |
+| 4 | the body as **text**, e.g. `{"ip":"8.8.8.8", …}` | `city`, `org`, `country` as things you can use — that needs `JSON.parse()` |
+| 5 | the answer on screen | anything saved: a Fix Script writes nothing unless its own code does |
+
+And what goes wrong at each stage:
+
 | Line | What it is doing | What goes wrong |
 |---|---|---|
-| first line | opens the saved REST Message `IPInfo` and picks the method `Default GET` | if the app lives in another app's namespace, the name needs that prefix; a misspelled method fails straight away |
-| second line | fills the blank with `8.8.8.8` | wrong name → the text `${ipaddress}` gets sent; wrong value → ipinfo.io says it is not an address |
-| third line | actually visits the website (this is where the waiting happens) | with no internet access from ServiceNow this fails or times out |
-| fourth line | grabs the reply as plain text | it is text, not a ready-made list of fields — see the next section |
-| last line | puts the reply in the pop-up | see below |
+| 1 | opens the saved REST Message and picks the method | name not scope-prefixed when called from another app's scope; misspelled method fails immediately |
+| 2 | fills the blank with `8.8.8.8` | wrong name → the text `${ipaddress}` goes out literally; wrong value → ipinfo.io says it is not an address |
+| 3 | actually visits the website (this is where the waiting happens) | no internet access from ServiceNow → status `0` or a timeout |
+| 4 | grabs the reply as plain text | the reply can be an error page; text is not fields |
+| 5 | puts the reply in the pop-up | a removed `throw` means the pop-up never appears |
 
 ### Why the script throws an "error" on purpose
 
