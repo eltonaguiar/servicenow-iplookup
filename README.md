@@ -12,13 +12,34 @@ script, you can follow this.
 Part of [eltonaguiar/ServiceNow_Portfolio](https://github.com/eltonaguiar/ServiceNow_Portfolio)
 (entry **#7**).
 
-**Jump to:** [the 60-second version](#start-here-the-60-second-version) ·
-[fundamentals: why this way](#fundamentals-why-call-a-website-at-all-and-why-this-way) ·
-[why the address has a blank](#why-the-address-has-a-blank-in-it) ·
-[what the answer looks like](#what-the-answer-looks-like) ·
-[the code line by line](#the-script-explained-line-by-line) ·
-[three complete examples](#real-code-three-complete-examples) ·
-[troubleshooting](#if-it-does-not-work) · [glossary](#words-you-will-bump-into)
+## Contents
+
+1. [Start here: the 60-second version](#start-here-the-60-second-version)
+2. [Fundamentals: why call a website at all, and why this way?](#fundamentals-why-call-a-website-at-all-and-why-this-way)
+   - [What else could you use instead?](#what-else-could-you-use-instead)
+   - [When is this the wrong tool?](#when-is-this-the-wrong-tool)
+3. [What is happening, in everyday terms](#what-is-happening-in-everyday-terms)
+4. [Why the address has a blank in it](#why-the-address-has-a-blank-in-it)
+5. [What the answer looks like](#what-the-answer-looks-like)
+6. [What is actually stored in the app](#what-is-actually-stored-in-the-app)
+7. [The script, explained line by line](#the-script-explained-line-by-line)
+8. [Real code: three complete examples](#real-code-three-complete-examples)
+9. [Run the original Fix Script yourself](#run-the-original-fix-script-yourself)
+10. [If it does not work](#if-it-does-not-work)
+11. [Prove it is the website, not ServiceNow](#prove-it-is-the-website-not-servicenow)
+12. [Build it yourself in four steps](#build-it-yourself-in-four-steps)
+13. [Words you will bump into](#words-you-will-bump-into)
+14. [What is in this repo](#what-is-in-this-repo)
+15. [Which branch to read](#which-branch-to-read)
+16. [Two things not to do](#two-things-not-to-do)
+17. [Appendix: the three ways in and out](#appendix-the-three-ways-in-and-out-and-tying-this-to-a-real-database)
+    - [A1. What a REST Message actually gives you](#a1-what-a-rest-message-actually-gives-you)
+    - [A2. Your Toronto events database](#a2-making-it-practical-your-toronto-events-database)
+    - [A3. Scripted REST API lab](#a3-scripted-rest-api--the-lab-servicenow-serves)
+    - [A4. SOAP lab](#a4-soap--the-lab)
+    - [A5. Side by side](#a5-side-by-side)
+    - [A6. What triggers what](#a6-what-triggers-what-and-why)
+    - [A7. Debug checklist](#a7-one-debug-checklist-for-all-three)
 
 ---
 
@@ -457,12 +478,38 @@ are not on the internet at all, which is what `skipped` counts.
 
 ## Run the original Fix Script yourself
 
-1. Open **All → System Definition → Fix Scripts → Elton Test Integration**.
-2. Click **Run Fix Script**.
-3. A pop-up shows `Elton was here! Response: {"ip":"8.8.8.8", …}`.
+**The script you are running** is the **Fix Script** record named **`Elton Test Integration`** — it is
+the only script this app contains, and it is the five lines shown above.
 
-You should recognise the shape of that reply — it is the same as the sample above. If you get
-something else, the next table is the quick way out.
+1. In ServiceNow, open the filter box at the top left (or **All**), type `Fix Scripts`, and choose
+   **System Definition → Fix Scripts**. You can also paste `sys_script_fix_list.do` into the URL.
+2. Find the row **`Elton Test Integration`** — the only row in this app — and click its name to open
+   the record.
+3. The form shows a **Script** field containing the code above. At the top of the form, click the
+   **Run Fix Script** button.
+4. A pop-up appears containing `Elton was here! Response: {"ip":"8.8.8.8", …}`. That text is the
+   reply from ipinfo.io, printed by the last line of the script.
+5. Click **OK** to close it. A Fix Script saves nothing unless its own code writes something.
+
+If there is no **Run Fix Script** button on the form, you are looking at a different kind of record —
+a Script Include, for example, cannot be run on its own.
+
+**Prefer the output panel to a pop-up?** Use **All → System Definition → Scripts - Background**
+(paste `sys_script.do`), put this in it, and click **Run Script**:
+
+```javascript
+var r = new sn_ws.RESTMessageV2('x_1569490_iplookup.IPInfo', 'Default GET');
+r.setStringParameterNoEscape('ipaddress', '8.8.8.8');
+var response = r.execute();
+gs.info('HTTP ' + response.getStatusCode());
+gs.info(response.getBody());
+```
+
+Background scripts print `gs.info` lines straight into the panel below, which is easier to copy from
+than a pop-up. It is the same call, with the "throw" replaced by a log line.
+
+You should recognise the shape of the reply — it matches the sample above. If it does not, the next
+table is the quick way out.
 
 ---
 
@@ -504,7 +551,7 @@ You do not need the files in this repo to recreate it:
 2. Add a method: name `Default GET`, type `GET`, address `https://ipinfo.io/${ipaddress}/json`,
    authentication "inherit from parent".
 3. On that method add a variable called `ipaddress`, with `8.8.8.8` as its default.
-4. Run the script and watch the pop-up.
+4. Test it: run **Elton Test Integration** (see [Run the original Fix Script yourself](#run-the-original-fix-script-yourself)) and the pop-up shows the reply.
 
 When you eventually need a password or key, put it on the **REST Message** (step 1) and leave the
 method on "inherit from parent" — that way changing the website later does not mean re-typing
@@ -567,3 +614,377 @@ someone re-publishes it.
 
 This app only calls out. It cannot be called from outside — if you want that direction, see the
 Remote Table sample (#6) in the portfolio.
+---
+
+## Appendix: the three ways in and out, and tying this to a real database
+
+Everything above is **outbound**: ServiceNow asks a website a question. Real integrations also need
+the opposite direction, and they need to choose between three patterns. This appendix answers:
+
+- what a REST Message actually gives you (and what it does not),
+- how to wire this to the Toronto events database, including what the PHP wrapper *is*,
+- a step-by-step lab for a **Scripted REST API** (ServiceNow serves),
+- a step-by-step lab for **SOAP** (ServiceNow consumes, and briefly serves),
+- when to use which, what triggers each one, and where the errors go.
+
+> Menu names drift between releases (Vancouver, Washington, Xanadu…). Where a module name is
+> version-dependent I say so instead of pretending it is fixed.
+
+### A1. What a REST Message actually gives you
+
+Two things, at two different times:
+
+**At design time — a saved definition.** The address, the method (`GET`/`POST`), headers, the
+authentication profile, the variables with their defaults, and optionally which MID Server carries
+the call. It is a record, so it shows up in the menu, can be edited without touching code, and can be
+reused by any script.
+
+**At run time — a response object.** After `execute()` you get:
+
+| You call | You get |
+|---|---|
+| `getStatusCode()` | `200` worked, `404` not found, `401/403` not allowed, `500` the far end broke, `0` the call never left |
+| `getBody()` | the reply as **text** (JSON, XML, HTML — whatever they sent) |
+| `getHeaders()` | the reply headers (`Content-Type`, rate-limit hints, cookies) |
+| `getErrorMessage()` | why it failed, when there was no HTTP reply at all |
+
+**What it does not give you, no matter what the marketing implies:**
+
+| Not included | So you handle it |
+|---|---|
+| retries | a table of "things still to send", or a scheduled job that re-runs |
+| a queue | the call is synchronous: the user (or job) waits |
+| schema validation | `JSON.parse` may still throw; check `info.error` too |
+| rate limiting | free APIs throttle you; batch and pause (see example 3 in the main guide) |
+| guaranteed delivery | if the job dies mid-loop, nothing retries it |
+
+That is the honest trade: low ceremony, no guarantees. If you need guarantees, use Flow Designer
+(retries, error branches) or a "to-send" table you drive yourself.
+
+### A2. Making it practical: your Toronto events database
+
+There are two directions, and they are mirror images. Naming both sides properly is the part people
+get stuck on:
+
+| | **ServiceNow pulls** (events → ServiceNow) | **ServiceNow serves** (ServiceNow → website) |
+|---|---|---|
+| Who starts it | a scheduled job in ServiceNow | your PHP page |
+| Website's role | **service provider** — it publishes a REST endpoint | **service consumer** — it is the client |
+| ServiceNow's role | **service consumer** — outbound REST client | **service provider** — via a Scripted REST API |
+| What you build | REST Message + scheduled job | Scripted REST API + one resource script |
+| Data moves | website → ServiceNow | ServiceNow → website |
+| Auth | token/header or basic auth **on the REST Message** | OAuth or basic auth + a role on the resource |
+
+So, directly answering the question: **yes, the website needs a small PHP wrapper, and that wrapper is
+a web service** — specifically a REST API endpoint (it answers `GET` with JSON). It is *not* "a REST
+Message"; a REST Message is the ServiceNow-side record that calls it. On the ServiceNow side the thing
+that does the calling is the **outbound REST client**, and the record plus `RESTMessageV2` is how you
+configure and run it.
+
+### The pull direction, end to end
+
+```
+Scheduled job (every 15 min)
+   └─ RESTMessageV2('Toronto Events', 'getSince')
+        ├─ GET https://findtorontoevents.ca/api/events.php?since=2026-11-04T20:00:00Z
+        └─ header  X-API-Token: ****            ← secret lives on the REST Message, not in code
+             │
+             ▼
+        {"count":2,"events":[{"event_id":"evt_123","title":"…","start":"…","venue":"…"}]}
+             │
+             ▼
+   loop → GlideRecord upsert keyed on event_id (coalesce) → u_torontoeventsfinal
+```
+
+A minimal endpoint — this is the whole "PHP wrapper" idea, ~25 lines:
+
+```php
+<?php
+// api/events.php — a REST endpoint the ServiceNow instance calls.
+header('Content-Type: application/json');
+
+$token = getenv('EVENTS_API_TOKEN') ?: '';
+$sent  = $_SERVER['HTTP_X_API_TOKEN'] ?? '';
+if ($token !== '' && !hash_equals($token, $sent)) {
+    http_response_code(401);
+    echo json_encode(['error' => 'bad or missing token']);
+    exit;
+}
+
+$since = $_GET['since'] ?? '1970-01-01 00:00:00';
+
+try {
+    $pdo = new PDO('mysql:host=localhost;dbname=events;charset=utf8mb4', 'user', 'pass', [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    ]);
+    $stmt = $pdo->prepare(
+        'SELECT event_id, title, start_dt, venue, url
+           FROM events
+          WHERE updated_at >= :since
+          ORDER BY updated_at ASC
+          LIMIT 500'
+    );
+    $stmt->execute([':since' => $since]);
+
+    $out = [];
+    foreach ($stmt as $r) {
+        $out[] = [
+            'event_id' => $r['event_id'],
+            'title'    => $r['title'],
+            'start'    => $r['start_dt'],
+            'venue'    => $r['venue'],
+            'url'      => $r['url'],
+        ];
+    }
+    echo json_encode(['count' => count($out), 'events' => $out]);
+} catch (Throwable $e) {
+    http_response_code(500);
+    error_log('events.php: ' . $e->getMessage());       // details in the server log, not to the caller
+    echo json_encode(['error' => 'lookup failed']);
+}
+```
+
+Four things that matter in that file, and they are the same four that matter on the ServiceNow side:
+
+1. **A secret, not a query-string password.** The token travels in a header; the ServiceNow REST
+   Message holds it, and the script never does.
+2. **A delta, not "everything".** `?since=` plus an `updated_at` index, so a 15-minute job moves
+   hundreds of rows, not hundreds of thousands.
+3. **A limit.** `LIMIT 500` and a `next` cursor keep one slow query from timing out the caller. When
+   the reply has 500 rows, the job asks again with the newest `updated_at` it saw.
+4. **Errors that do not leak.** The caller gets "lookup failed"; the stack trace goes to the web
+   server's error log.
+
+**Which is better here — this, or the JDBC route (#3 in the portfolio)?**
+
+| | HTTP endpoint (this) | JDBC data source (#3) |
+|---|---|---|
+| Needs DB credentials on the MID Server | no | yes |
+| Works with any host / language | yes (PHP, Node, Go…) | MySQL/MariaDB only |
+| Can reshape or filter the payload | yes, in PHP | no, raw SQL |
+| Bulk volume | slower, page by page | much faster |
+| Firewall friendliness | one HTTPS URL | a database port through the MID |
+
+Rule of thumb: HTTP when you need a *shaped, filtered* feed across the internet; JDBC when you need
+*bulk* from a database you already trust.
+
+### A3. Scripted REST API — the lab (ServiceNow *serves*)
+
+This is the reverse of the app: instead of ServiceNow calling out, you publish an address **outside
+systems call**. Your PHP page, a mobile app, Power BI, Postman — anything that speaks HTTP.
+
+**What it is:** a REST API defined in two records — the API (name, namespace, base path) and one or
+more resources (HTTP method + script). Your script receives `request` and fills in `response`.
+
+### Step by step
+
+**Step 1 — create the API.**
+Breadcrumb: **All → System Web Services → Scripted REST APIs → New** (in some releases: *System Web
+Services → Scripted Web Services → Scripted REST APIs*).
+
+| Field | Value to use | Mandatory? | Why it matters |
+|---|---|---|---|
+| **Name** | `IP Info API` | yes | the human label |
+| **API ID** | `ipinfo` | yes | becomes the URL segment |
+| **API namespace** | `x_1569490_iplookup` (the app scope) | yes | also in the URL, and decides which scripts can see it |
+| **Short description** | what it serves | no | the only documentation your consumers will read |
+| **Requires authentication** | leave **true** | — | turning this off makes a public, unauthenticated endpoint |
+
+The resulting base path is `/api/<namespace>/<API ID>`, i.e.
+`https://<your-instance>.service-now.com/api/x_1569490_iplookup/ipinfo`.
+
+**Step 2 — add a resource.**
+Breadcrumb: on the API record → **Resources** tab → **New**.
+
+| Field | Value | Mandatory? | Notes |
+|---|---|---|---|
+| **Name** | `lookup` | yes | label only |
+| **HTTP method** | `GET` | yes | `GET` reads, `POST` creates, `PUT/PATCH` update, `DELETE` removes |
+| **Relative path** | `/lookup` | yes | appended to the base path |
+| **Requires authentication** | true | — | inherit unless you have a reason |
+| **Requires role** | e.g. `x_1569490_iplookup.api_user` | practically yes | **this is the usual cause of a 403** |
+| **Script** | below | yes | runs as the *calling* user unless you say otherwise |
+
+**Step 3 — the script.** It is a function with two arguments, and you must call it:
+
+```javascript
+(function process(request, response) {
+
+    var ip = request.queryParams.ip;
+
+    if (!ip) {
+        response.setStatus(400);
+        response.setHeader('Content-Type', 'application/json');
+        response.setBody(JSON.stringify({ error: 'pass ?ip=8.8.8.8' }));
+        return;
+    }
+
+    var info = new IpInfoLookup().lookup(ip);      // the Script Include from the main guide
+
+    if (!info.ok) {
+        response.setStatus(502);                    // 502 = the far end misbehaved, not you
+        response.setHeader('Content-Type', 'application/json');
+        response.setBody(JSON.stringify({ error: info.error, upstreamStatus: info.status }));
+        return;
+    }
+
+    response.setStatus(200);
+    response.setHeader('Content-Type', 'application/json');
+    response.setBody(JSON.stringify({
+        ip: info.ip, city: info.city, country: info.country, org: info.org
+    }));
+
+})(request, response);
+```
+
+Three habits worth copying: **`JSON.stringify` explicitly** (passing an object to `setBody` is not a
+reliable way to get JSON), **a different status for "you asked wrong" (400) versus "the far end
+failed" (502)**, and **never the stack trace in the body**.
+
+**Step 4 — test before writing a client.**
+Breadcrumb: **All → System Web Services → REST API Explorer** → pick `IP Info API` → `lookup` → enter
+`8.8.8.8` → **Send**. The explorer shows the request, the response and a `curl` you can copy. That
+curl is the breadcrumb to hand a PHP developer.
+
+**Step 5 — call it from outside.**
+
+```bash
+curl -u 'integration.user:password' \
+     'https://your-instance.service-now.com/api/x_1569490_iplookup/ipinfo/lookup?ip=8.8.8.8'
+```
+
+Basic auth is fine for a first test; for anything real use OAuth (or a dedicated integration user
+with a strong password and exactly one role). Never reuse an admin account.
+
+### What will bite you
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `401 Unauthorized` | no credentials, or basic auth disabled | check the API's *Requires authentication*; confirm the user can log in |
+| `403 Forbidden` | authenticated, but missing the role — or missing the platform's `snc_internal` / `snc_external` role | add the resource role to the integration user |
+| `400` with a JSON body | your own validation branch | read your own message; the caller did something wrong |
+| `500`, empty body | your resource script threw | read **System Log → All** filtered to your scope: the caller never sees the stack trace |
+| `404` | wrong path — usually the namespace or API ID | compare with the URL shown in the REST API Explorer |
+| works in the explorer, fails outside | the explorer runs as *you* (admin); the outside caller does not | test with the integration user's credentials |
+| slow, or `timeout` | work inside the request | keep the handler under a second: return an id, do the heavy part in a scheduled job |
+
+**Debugging, concretely:** add `gs.info('[ipinfo api] ' + ip)` at the top of the resource and
+`gs.error(...)` in each failure branch; read **System Log → All** with the scope filter; use
+**Session Debug → Debug** only if you need line-level tracing (it is slow and noisy). Where errors go
+is split by design: **the caller gets a status code and a short message; the server gets the stack
+trace.**
+
+**Performance, concretely:** a request holds a transaction slot for its whole duration, so the
+expensive things to avoid are loops over `GlideRecord` with per-row queries, unbounded queries (no
+`setLimit`), and calling another slow API inline. If the answer is not instant, store the request in a
+table, return `202 Accepted` with an id, and let a job do the work.
+
+### A4. SOAP — the lab
+
+SOAP is the older XML protocol: a rigid envelope, a strict contract (**WSDL**) describing every
+operation, and its own error shape (`soap:Fault`). It is still everywhere in enterprise land (SAP,
+older .NET services, government systems). Prefer REST when you have the choice; use SOAP when the
+other side only offers it.
+
+### Consume SOAP — the path that works on every release
+
+You do not need any ServiceNow records: POST the envelope as if it were a REST call with an XML body.
+Using W3Schools' public temperature converter (a real service, handy for practice):
+
+```javascript
+var env = '<?xml version="1.0" encoding="utf-8"?>' +
+  '<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"' +
+  ' xmlns:xsd="http://www.w3.org/2001/XMLSchema"' +
+  ' xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">' +
+  '<soap:Body><FahrenheitToCelsius xmlns="https://www.w3schools.com/xml/">' +
+  '<Fahrenheit>100</Fahrenheit></FahrenheitToCelsius></soap:Body></soap:Envelope>';
+
+var msg = new sn_ws.RESTMessageV2();          // no saved record: an ad-hoc call
+msg.setHttpMethod('post');
+msg.setEndpoint('https://www.w3schools.com/xml/tempconvert.asmx');
+msg.setRequestHeader('Content-Type', 'text/xml; charset=utf-8');
+msg.setRequestHeader('SOAPAction', 'https://www.w3schools.com/xml/FahrenheitToCelsius');
+msg.setRequestBody(env);
+
+var res = msg.execute();
+gs.info('SOAP ' + res.getStatusCode() + ' ' + res.getBody());
+```
+
+Reading the value out (the reply is XML, so XML-parsing, not `JSON.parse`):
+
+```javascript
+var doc = new XMLDocument2();
+doc.parseXML(res.getBody());
+var celsius = doc.getNodeText('//*[local-name()="FahrenheitToCelsiusResult"]');
+gs.info('100F = ' + celsius + 'C');
+```
+
+If `XMLDocument2` is not available in your release, import the WSDL instead (below) and let ServiceNow
+do the parsing for you — that is the trade.
+
+**The WSDL route.** Breadcrumb: **All → System Web Services → Outbound → (Import WSDL / SOAP
+Message)** — the module name is release-dependent; in older instances it is *Import WSDL* under
+System Web Services. Add the WSDL URL, and ServiceNow generates a message record plus one function per
+operation, with typed arguments. Your script then calls it by name instead of hand-writing envelopes.
+Confirm the class name for your release before relying on it (some expose a SOAP-specific message
+class, others generate code that calls the message record).
+
+### Publish SOAP from ServiceNow — and why you probably should not
+
+ServiceNow has a legacy *Scripted SOAP Web Service* module that publishes a WSDL you write by hand.
+It works, but compared with a Scripted REST API you get: manual WSDL, no explorer, no easy versioning,
+awkward JSON conversion (none — it is XML in both directions), and very little community material.
+Publish REST unless a specific consumer only speaks SOAP; if so, put a tiny REST→SOAP bridge next to
+it (a PHP or Node service) rather than maintaining a WSDL inside ServiceNow.
+
+### SOAP's three classic failures
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `500` with `<soap:Fault>` in the body | the far end rejected the request | read the **fault string inside the body**, not just the status code |
+| "Server did not recognize the value of HTTP Header SOAPAction" | `SOAPAction` missing or misspelled | copy it character-for-character from the WSDL |
+| Everything else fails, envelope looks right | malformed XML (one unclosed tag invalidates the whole message) | paste the envelope into any XML validator before blaming ServiceNow |
+
+### A5. Side by side
+
+| | **`RESTMessageV2`** | **Scripted REST API** | **SOAP message** |
+|---|---|---|---|
+| Direction | outbound | inbound | outbound, and (legacy) inbound |
+| Who is the client | ServiceNow | the outside system | ServiceNow |
+| What you create | REST Message + method + variables | API record + resource script | WSDL import (or hand-built envelope) |
+| Data format | JSON (usually) | JSON | XML only |
+| Auth | on the message / profile | role on the resource, OAuth or basic | WS-Security, basic, or none |
+| Test tool | Fix Script / log | REST API Explorer | Postman / SoapUI / curl |
+| Best at | asking another system a question | letting another system ask *you* | talking to a system that only speaks SOAP |
+| Ceremony | low | medium | high |
+| Modern choice? | yes | yes | only when forced |
+
+### A6. What triggers what, and why
+
+| Trigger | Right when | What it costs you |
+|---|---|---|
+| **Business Rule** (before/after insert/update) | the call must happen as part of the save, the payload is small, and the user can wait under a second | it blocks the transaction: a slow website makes the form feel broken, and an exception can roll the save back |
+| **Scheduled job** | delta pulls, backfills, retries, anything batched | not real-time; you need a watermark and a page size |
+| **Flow Designer action** | a business analyst should own the automation, or you need retries and error branches | licence/entitlement, harder to unit test |
+| **UI Action** | a human clicks "look this up now" | runs as that user; synchronous; needs its own permission thinking |
+| **Async Business Rule / event queue** | save must be fast, the call can happen a moment later | more moving parts (event registry, script action) — but this is the safe way to call out on save |
+| **External HTTP call** (someone calls your Scripted REST API) | the website needs ServiceNow's data | you own auth, rate limits and a stable contract |
+
+The pairing that covers most real work: **Scripted REST API for inbound, `RESTMessageV2` inside a
+scheduled job for outbound**, with Flow Designer where a non-developer must own it.
+
+### A7. One debug checklist for all three
+
+| Question | Where to look |
+|---|---|
+| Did the call even leave? | outbound: `getStatusCode() === 0` means no reply at all; check network/MID |
+| What exactly was sent? | log the substituted address and the body, not just "it failed" |
+| What did they say? | the body — always log the body on failure, not just the code |
+| Why did my resource 500? | **System Log → All**, filtered to your scope; the caller never sees it |
+| Is it slow, or dead? | time one call in the explorer / with curl before blaming ServiceNow |
+| Is it a permission or a logic problem? | strip the logic to a "ping" resource or a bare call; if ping works, it is logic |
+| Did it work yesterday and not today? | check for a changed token, an expired certificate, a new role requirement, or a rate limit |
+
+Rules that save the most time: **log the request and the response body on failure**, **use a distinct
+status code per cause**, **never put secrets in a URL**, and **never call a slow system from a
+Business Rule** without an async step between them.
